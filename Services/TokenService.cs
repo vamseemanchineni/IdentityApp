@@ -24,6 +24,7 @@ namespace IdentityApp.Services
             var userClaims = new List<Claim>
             {
                 new Claim(StaticDetails.UserId, user.Id.ToString()),
+                new Claim(StaticDetails.Name, user.Name),
                 new Claim(StaticDetails.UserName, user.UserName),
                 new Claim(StaticDetails.Email, user.Email)
             };

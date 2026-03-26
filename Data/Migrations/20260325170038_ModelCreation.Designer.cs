@@ -9,10 +9,10 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace IdentityApp.Data.Migration
+namespace IdentityApp.Data.Migrations
 {
     [DbContext(typeof(DataContext))]
-    [Migration("20260324042049_ModelCreation")]
+    [Migration("20260325170038_ModelCreation")]
     partial class ModelCreation
     {
         /// <inheritdoc />
@@ -88,6 +88,10 @@ namespace IdentityApp.Data.Migration
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)

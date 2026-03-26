@@ -1,16 +1,19 @@
 ﻿using API.Utility;
 using IdentityApp.Data;
+using IdentityApp.DTOs;
 using IdentityApp.Models;
 using IdentityApp.Services;
 using IdentityApp.Services.IServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace IdentityApp.Extensions
@@ -26,6 +29,18 @@ namespace IdentityApp.Extensions
                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
             });
             builder.Services.AddScoped<ITokenService, TokenService>();
+            builder.Services.AddCors();
+            builder.Services.Configure<ApiBehaviorOptions>(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var errors = context.ModelState.Where(x => x.Value.Errors.Count > 0)
+                        .SelectMany(x => x.Value.Errors)
+                        .Select(x => x.ErrorMessage).ToArray();
+                    var response = new ApiResponse(400, errors: errors);
+                    return new BadRequestObjectResult(response);
+                };
+            });
             return builder;
         }
         public static WebApplicationBuilder AddAuthenticationServices(this WebApplicationBuilder builder)

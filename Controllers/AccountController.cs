@@ -1,4 +1,5 @@
 ﻿using API.Utility;
+using IdentityApp.DTOs;
 using IdentityApp.DTOs.Account;
 using IdentityApp.Extensions;
 using IdentityApp.Models;
@@ -14,21 +15,17 @@ using System.Threading.Tasks;
 
 namespace IdentityApp.Controllers
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class AccountController : ControllerBase
+    public class AccountController : ApiCoreController
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly SignInManager<AppUser> _signInManager;
         private readonly ITokenService _tokenService;
-        private readonly IConfiguration _config;
 
-        public AccountController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, ITokenService tokenService, IConfiguration config)
+        public AccountController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager, ITokenService tokenService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _tokenService = tokenService;
-            _config = config;
         }
         [HttpGet("auth-status")]
         public IActionResult IsLoggedIn()
@@ -43,7 +40,7 @@ namespace IdentityApp.Controllers
             if (user == null)
             {
                 RemoveJwtCookie();
-                return Unauthorized();
+                return Unauthorized(new ApiResponse(401));
             }
             return CreateAppUserDto(user);
         }
@@ -57,13 +54,18 @@ namespace IdentityApp.Controllers
             }
             if(user == null)
             {
-                return Unauthorized("Invalid username or password.");
+                return Unauthorized(new ApiResponse(401, message: "Invalid username or password."));
             }
-            var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password, false);
+            var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password, true);
             if(!result.Succeeded)
             {
                 RemoveJwtCookie();
-                return Unauthorized("Invalid username or password.");
+                if(result.IsLockedOut)
+                {
+                    return Unauthorized(new ApiResponse(401, title: "Account locked", 
+                        message: StaticDetails.AccountLockedMessage(user.LockoutEnd.Value.DateTime), isHtmlEnabled: true, displayByDefault: true));
+                }
+                return Unauthorized(new ApiResponse(401, message: "Invalid username or password."));
             }
             return CreateAppUserDto(user);
         }
@@ -72,23 +74,36 @@ namespace IdentityApp.Controllers
         {
             if(await checkEmailExistsAsync(model.Email))
             {
-                return BadRequest("Email already exists.");
+                return BadRequest(new ApiResponse(400,message: "Email already exists."));
             }
-            if (await checkUsernameExistsAsync(model.Username))
+            if (await checkNameExistsAsync(model.Name))
             {
-                return BadRequest("Username already exists.");
+                return BadRequest(new ApiResponse(400,message: "Username already exists."));
             }
             var userToAdd = new AppUser
             {
-                UserName = model.Username.ToLower(),
+                Name = model.Name,
+                UserName = model.Name.ToLower(),
                 Email = model.Email.ToLower(),
-                EmailConfirmed = true
+                EmailConfirmed = true,
+                LockoutEnabled = true,
             };
              var result = await _userManager.CreateAsync(userToAdd, model.Password);
             if(!result.Succeeded) return BadRequest(result.Errors);
             // Registration logic here
-            return Ok("User registered successfully.");
+            return Ok(new ApiResponse(200,message: "User registered successfully."));
         }
+        [HttpGet("name-taken")]
+        public async Task<IActionResult> NameTaken([FromQuery] string name)
+        {
+            return Ok(new { IsTaken = await checkNameExistsAsync(name) });
+        }
+        [HttpGet("email-taken")]
+        public async Task<IActionResult> EmailTaken([FromQuery] string email)
+        {
+            return Ok(new { IsTaken = await checkEmailExistsAsync(email) });
+        }
+
         [Authorize]
         [HttpPost("logout")]
         public IActionResult Logout()
@@ -104,7 +119,7 @@ namespace IdentityApp.Controllers
             SetJWTCookie(jwt);
             return new AppUserDto
             {
-                UserName = user.UserName,
+                Name = user.Name,
                 Jwt = jwt
             };
         }
@@ -115,7 +130,7 @@ namespace IdentityApp.Controllers
                 IsEssential = true,
                 HttpOnly = true,
                 Secure = true,
-                Expires = DateTime.UtcNow.AddDays(int.Parse(_config["JWT:ExpiresInDays"])),
+                Expires = DateTime.UtcNow.AddDays(int.Parse(Configuration["JWT:ExpiresInDays"])),
                 SameSite = SameSiteMode.None
             };
             Response.Cookies.Append(StaticDetails.IdentityAppCookie, token, cookieOptions);
@@ -129,9 +144,9 @@ namespace IdentityApp.Controllers
             return await _userManager.Users.AnyAsync(x=>x.Email == email.ToLower());
         }
 
-        private async Task<bool> checkUsernameExistsAsync(string username)
+        private async Task<bool> checkNameExistsAsync(string name)
         {
-            return await _userManager.Users.AnyAsync(x => x.UserName == username.ToLower());
+            return await _userManager.Users.AnyAsync(x => x.UserName == name.ToLower());
         }
         #endregion
     }
